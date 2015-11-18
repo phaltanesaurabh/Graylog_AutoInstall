@@ -1,0 +1,54 @@
+#!/bin/bash
+
+ElasticSearchHome=/opt
+graylogHome=/opt
+
+echo "[MongoDB]
+name=MongoDB Repository
+baseurl=http://downloads-distro.mongodb.org/repo/redhat/os/x86_64
+gpgcheck=0
+enabled=1
+"| tee /etc/yum.repos.d/mongodb.repo
+
+echo "Addding MongoDb repo to Machine" >> /opt/graylog_auto_install.log
+
+yum install mongodb-org -y
+
+echo "Downloading elasticsearch && graylog and WebInterface" >> /opt/graylog_auto_install.log
+
+cd $ElasticSearchHome && wget https://download.elasticsearch.org/elasticsearch/elasticsearch/elasticsearch-0.90.10.tar.gz && tar xvzf elasticsearch-0.90.10.tar.gz  2>&1 >> /opt/graylog_auto_install.log
+
+cd $graylogHome   && wget https://github.com/Graylog2/graylog2-server/releases/download/0.20.1/graylog2-server-0.20.1.tgz && tar xvzf graylog2-server-0.20.1.tgz 2>&1 >> /opt/graylog_auto_install.log
+
+cd $graylogHome && wget https://github.com/Graylog2/graylog2-web-interface/releases/download/0.20.1/graylog2-web-interface-0.20.1.tgz && tar xvzf graylog2-web-interface-0.20.1.tgz 2>&1 >> /opt/graylog_auto_install.log
+
+sed -i 's/^# cluster\.name\: elasticsearch/ cluster\.name: \graylog2/g' $ElasticSearchHome/elasticsearch-0.90.10/config/elasticsearch.yml
+
+sleep 2
+cp $graylogHome/graylog2-server-0.20.1/graylog2.conf.example   /etc/graylog2.conf
+
+sleep 2
+
+sed -i 's/^password_secret =/password_secret =4bbdd5a829dba09d7a7ff4c1367be7d36a017b4267d728d31bd264f63debeaa6/g'  /etc/graylog2.conf
+sed -i 's/^root_password_sha2 =/root_password_sha2 =4bbdd5a829dba09d7a7ff4c1367be7d36a017b4267d728d31bd264f63debeaa6/g'  /etc/graylog2.conf
+
+yum remove java -y 2>&1 >> /opt/graylog_auto_install.log
+sleep 8
+yum install java-1.7.0-openjdk -y 2>&1 >> /opt/graylog_auto_install.log
+
+sed -i 's/^graylog2-server.uris=/graylog2-server.uris=\"http\:\/\/127\.0\.0\.1\:12900\/"/g'  $graylogHome/graylog2-web-interface-0.20.1/conf/graylog2-web-interface.conf
+
+
+sed -i 's/^application.secret=/application.secret=\"4bbdd5a829dba09d7a7ff4c1367be7d36a017b4267d728d31bd264f63debeaa6\"/g'  $graylogHome/graylog2-web-interface-0.20.1/conf/graylog2-web-interface.conf
+
+#Starting ElasticSearch
+service mongod restart
+sleep 2
+$ElasticSearchHome/elasticsearch-0.90.10/bin/elasticsearch 2>&1 >> /opt/graylog_auto_install.log
+sleep 15
+$graylogHome/graylog2-server-0.20.1/bin/graylog2ctl start   2>&1 >> /opt/graylog_auto_install.log
+sleep 5
+echo "graylog started";
+rm -rf $graylogHome/graylog2-web-interface-0.20.1/RUNNING_PID
+sleep 2
+nohup $graylogHome/graylog2-web-interface-0.20.1/bin/graylog2-web-interface &   2>&1 >> /opt/graylog_auto_install.log
